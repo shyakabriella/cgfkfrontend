@@ -28,6 +28,7 @@ type NavigationItem = {
   href: string;
   icon: typeof LayoutDashboard;
   hiddenFor?: string[];
+  allowedFor?: string[];
 };
 
 const navigation: NavigationItem[] = [
@@ -72,7 +73,7 @@ const navigation: NavigationItem[] = [
     name: "Finance",
     href: "/dashboard/finance",
     icon: WalletCards,
-    hiddenFor: ["director_of_studies"],
+    allowedFor: ["headmaster", "accountant"],
   },
   {
     name: "Staff",
@@ -121,11 +122,27 @@ export default function DashboardSidebar({
     roleDashboardPages[userRole] ?? "/dashboard";
 
   const visibleNavigation = useMemo(() => {
-    return navigation.filter(
-      (item) =>
-        !userRole ||
-        !item.hiddenFor?.includes(userRole),
-    );
+    if (userRole === "accountant") {
+      return navigation.filter((item) =>
+        [
+          "/dashboard",
+          "/dashboard/finance",
+        ].includes(item.href),
+      );
+    }
+
+    return navigation.filter((item) => {
+      if (!userRole) return true;
+
+      if (
+        item.allowedFor &&
+        !item.allowedFor.includes(userRole)
+      ) {
+        return false;
+      }
+
+      return !item.hiddenFor?.includes(userRole);
+    });
   }, [userRole]);
 
   return (
@@ -228,20 +245,22 @@ export default function DashboardSidebar({
           </nav>
         </div>
 
-        <div className="border-t border-white/10 p-4">
-          <Link
-            href="/dashboard/settings"
-            onClick={onClose}
-            className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-              pathname.startsWith("/dashboard/settings")
-                ? "bg-blue-600 text-white"
-                : "text-slate-300 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <Settings size={20} />
-            School Settings
-          </Link>
-        </div>
+        {userRole !== "accountant" && (
+          <div className="border-t border-white/10 p-4">
+            <Link
+              href="/dashboard/settings"
+              onClick={onClose}
+              className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                pathname.startsWith("/dashboard/settings")
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              <Settings size={20} />
+              School Settings
+            </Link>
+          </div>
+        )}
       </aside>
     </>
   );

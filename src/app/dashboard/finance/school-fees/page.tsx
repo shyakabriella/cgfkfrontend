@@ -1,9 +1,9 @@
 "use client";
 
 import {
-  getClasses,
-  SchoolClass,
-} from "@/services/student.service";
+  FinanceClass,
+  getFinanceClasses,
+} from "@/services/finance.service";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 export default function SchoolFeesPage() {
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [classes, setClasses] = useState<FinanceClass[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,7 +24,7 @@ export default function SchoolFeesPage() {
   useEffect(() => {
     async function loadClasses() {
       try {
-        setClasses(await getClasses());
+        setClasses(await getFinanceClasses());
       } catch (exception) {
         setError(
           exception instanceof Error
