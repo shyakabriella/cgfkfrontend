@@ -69,8 +69,8 @@ const navigation: NavigationItem[] = [
     icon: FileText,
   },
   {
-    name: "School Fees",
-    href: "/dashboard/fees",
+    name: "Finance",
+    href: "/dashboard/finance",
     icon: WalletCards,
     hiddenFor: ["director_of_studies"],
   },
