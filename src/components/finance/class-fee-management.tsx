@@ -5,6 +5,7 @@ import {
   Banknote,
   CircleDollarSign,
   CreditCard,
+  Download,
   LoaderCircle,
   Pencil,
   ReceiptText,
@@ -28,7 +29,32 @@ type PaymentStudent = RegisteredStudent & {
   };
 };
 
+type FeeItem = {
+  id: number;
+  school_class_id: number | null;
+  name: string;
+  code: string;
+  amount: string;
+  academic_year: string;
+  term: number | null;
+  is_required: boolean;
+  status: "active" | "inactive";
+};
+
+type FeePayment = {
+  id: number;
+  student_id: number;
+  school_class_id: number;
+  fee_item_id: number;
+  amount: string;
+  payment_date: string;
+  payment_method: "cash" | "bank" | "mobile_money";
+  receipt_number: string;
+  status: "completed" | "voided";
+};
+
 type PaymentForm = {
+  fee_item_id: string;
   amount: string;
   payment_date: string;
   payment_method: "cash" | "bank" | "mobile_money";
@@ -37,6 +63,7 @@ type PaymentForm = {
 };
 
 const emptyPaymentForm: PaymentForm = {
+  fee_item_id: "",
   amount: "",
   payment_date: new Date().toISOString().split("T")[0],
   payment_method: "cash",
@@ -74,6 +101,34 @@ function getErrorMessage(result: unknown, fallback: string) {
   return response.message ?? fallback;
 }
 
+function extractList<T>(result: unknown): T[] {
+  if (Array.isArray(result)) {
+    return result as T[];
+  }
+
+  if (!result || typeof result !== "object") {
+    return [];
+  }
+
+  const response = result as {
+    data?: T[] | { data?: T[] };
+  };
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  if (
+    response.data &&
+    typeof response.data === "object" &&
+    Array.isArray(response.data.data)
+  ) {
+    return response.data.data;
+  }
+
+  return [];
+}
+
 export default function ClassFeeManagement({
   classId,
 }: {
@@ -82,6 +137,8 @@ export default function ClassFeeManagement({
   const [schoolClass, setSchoolClass] =
     useState<SchoolClass | null>(null);
   const [students, setStudents] = useState<PaymentStudent[]>([]);
+  const [feeItems, setFeeItems] = useState<FeeItem[]>([]);
+  const [payments, setPayments] = useState<FeePayment[]>([]);
   const [selectedStudent, setSelectedStudent] =
     useState<PaymentStudent | null>(null);
   const [form, setForm] =
@@ -89,6 +146,7 @@ export default function ClassFeeManagement({
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -97,15 +155,82 @@ export default function ClassFeeManagement({
     setError("");
 
     try {
-      const [classList, studentList] = await Promise.all([
+      const authToken = getToken();
+
+      if (!authToken) {
+        throw new Error("Unauthenticated. Please log in again.");
+      }
+
+      const [
+        classList,
+        studentList,
+        feeResponse,
+        paymentResponse,
+      ] = await Promise.all([
         getClasses(),
         getStudents({ schoolClassId: classId }),
+        fetch(`${apiUrl}/fee-items`, {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+        }),
+        fetch(
+          `${apiUrl}/fee-payments?school_class_id=${classId}&status=completed&per_page=100`,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
+        ),
       ]);
+
+      const [feeResult, paymentResult] =
+        await Promise.all([
+          feeResponse.json(),
+          paymentResponse.json(),
+        ]);
+
+      if (!feeResponse.ok) {
+        throw new Error(
+          getErrorMessage(
+            feeResult,
+            "Payment items could not be loaded.",
+          ),
+        );
+      }
+
+      if (!paymentResponse.ok) {
+        throw new Error(
+          getErrorMessage(
+            paymentResult,
+            "Paid fees could not be loaded.",
+          ),
+        );
+      }
+
+      const applicableItems = extractList<FeeItem>(
+        feeResult,
+      ).filter(
+        (item) =>
+          item.status === "active" &&
+          (
+            item.school_class_id === null ||
+            item.school_class_id === classId
+          ),
+      );
 
       setSchoolClass(
         classList.find((item) => item.id === classId) ?? null,
       );
       setStudents(studentList as PaymentStudent[]);
+      setFeeItems(applicableItems);
+      setPayments(
+        extractList<FeePayment>(paymentResult).filter(
+          (payment) => payment.status === "completed",
+        ),
+      );
     } catch (exception) {
       setError(
         exception instanceof Error
@@ -139,23 +264,353 @@ export default function ClassFeeManagement({
     );
   }, [students, search]);
 
-  const totals = useMemo(() => {
-    return students.reduce(
-      (result, student) => {
-        result.required +=
-          student.fee_summary?.total_required ?? 0;
-        result.paid += student.fee_summary?.total_paid ?? 0;
-        result.balance += student.fee_summary?.balance ?? 0;
+  const requiredFeeTotal = useMemo(
+    () =>
+      feeItems
+        .filter((item) => item.is_required)
+        .reduce(
+          (total, item) => total + Number(item.amount),
+          0,
+        ),
+    [feeItems],
+  );
 
-        return result;
-      },
-      {
-        required: 0,
-        paid: 0,
-        balance: 0,
-      },
+  const selectedFeeItem = feeItems.find(
+    (item) => item.id === Number(form.fee_item_id),
+  );
+
+  const requiredFeeItemIds = useMemo(
+    () =>
+      new Set(
+        feeItems
+          .filter((item) => item.is_required)
+          .map((item) => item.id),
+      ),
+    [feeItems],
+  );
+
+  const paidByStudent = useMemo(() => {
+    const result = new Map<number, number>();
+
+    payments.forEach((payment) => {
+      result.set(
+        payment.student_id,
+        (result.get(payment.student_id) ?? 0) +
+          Number(payment.amount),
+      );
+    });
+
+    return result;
+  }, [payments]);
+
+  const requiredPaidByStudent = useMemo(() => {
+    const result = new Map<number, number>();
+
+    payments.forEach((payment) => {
+      if (!requiredFeeItemIds.has(payment.fee_item_id)) {
+        return;
+      }
+
+      result.set(
+        payment.student_id,
+        (result.get(payment.student_id) ?? 0) +
+          Number(payment.amount),
+      );
+    });
+
+    return result;
+  }, [payments, requiredFeeItemIds]);
+
+  const paidByStudentAndItem = useMemo(() => {
+    const result = new Map<string, number>();
+
+    payments.forEach((payment) => {
+      const key = `${payment.student_id}:${payment.fee_item_id}`;
+
+      result.set(
+        key,
+        (result.get(key) ?? 0) + Number(payment.amount),
+      );
+    });
+
+    return result;
+  }, [payments]);
+
+  function studentPaid(studentId: number) {
+    return paidByStudent.get(studentId) ?? 0;
+  }
+
+  function studentRequiredPaid(studentId: number) {
+    return requiredPaidByStudent.get(studentId) ?? 0;
+  }
+
+  function studentItemPaid(
+    studentId: number,
+    feeItemId: number,
+  ) {
+    return (
+      paidByStudentAndItem.get(
+        `${studentId}:${feeItemId}`,
+      ) ?? 0
     );
-  }, [students]);
+  }
+
+  const selectedItemPaid =
+    selectedStudent && selectedFeeItem
+      ? studentItemPaid(
+          selectedStudent.id,
+          selectedFeeItem.id,
+        )
+      : 0;
+
+  const selectedItemRemaining = selectedFeeItem
+    ? Math.max(
+        Number(selectedFeeItem.amount) - selectedItemPaid,
+        0,
+      )
+    : 0;
+
+  const totals = useMemo(() => {
+    const paid = payments.reduce(
+      (total, payment) =>
+        total + Number(payment.amount),
+      0,
+    );
+
+    const required = requiredFeeTotal * students.length;
+
+    const requiredPaid = students.reduce(
+      (total, student) =>
+        total +
+        (requiredPaidByStudent.get(student.id) ?? 0),
+      0,
+    );
+
+    return {
+      required,
+      paid,
+      balance: Math.max(required - requiredPaid, 0),
+    };
+  }, [
+    payments,
+    requiredFeeTotal,
+    requiredPaidByStudent,
+    students,
+  ]);
+
+  async function exportPdf() {
+    if (!schoolClass) return;
+
+    setExportingPdf(true);
+    setError("");
+
+    try {
+      const [{ jsPDF }, autoTableModule] =
+        await Promise.all([
+          import("jspdf"),
+          import("jspdf-autotable"),
+        ]);
+
+      const autoTable = autoTableModule.default;
+      const document = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const logoResponse = await fetch("/lo.png");
+      const logoBlob = await logoResponse.blob();
+
+      const logoData = await new Promise<string>(
+        (resolve, reject) => {
+          const reader = new FileReader();
+
+          reader.onload = () =>
+            resolve(String(reader.result));
+          reader.onerror = () =>
+            reject(new Error("Logo could not be loaded."));
+          reader.readAsDataURL(logoBlob);
+        },
+      );
+
+      document.addImage(
+        logoData,
+        "PNG",
+        14,
+        10,
+        20,
+        20,
+      );
+
+      document.setTextColor(30, 41, 59);
+      document.setFont("helvetica", "bold");
+      document.setFontSize(15);
+      document.text("CGFK SCHOOL", 40, 16);
+
+      document.setFont("helvetica", "normal");
+      document.setFontSize(9);
+      document.setTextColor(100, 116, 139);
+      document.text(
+        "School Fees Management Report",
+        40,
+        22,
+      );
+
+      document.text(
+        `Generated: ${new Date().toLocaleDateString()}`,
+        40,
+        27,
+      );
+
+      document.setDrawColor(203, 213, 225);
+      document.line(14, 34, 283, 34);
+
+      document.setFont("helvetica", "bold");
+      document.setFontSize(12);
+      document.setTextColor(30, 41, 59);
+      document.text(
+        `${schoolClass.name} (${schoolClass.code})`,
+        14,
+        42,
+      );
+
+      document.setFont("helvetica", "normal");
+      document.setFontSize(9);
+      document.setTextColor(71, 85, 105);
+
+      document.text(
+        `Required: ${money(totals.required)}`,
+        14,
+        49,
+      );
+
+      document.text(
+        `Collected: ${money(totals.paid)}`,
+        80,
+        49,
+      );
+
+      document.text(
+        `Outstanding: ${money(totals.balance)}`,
+        146,
+        49,
+      );
+
+      document.text(
+        `Students: ${students.length}`,
+        220,
+        49,
+      );
+
+      autoTable(document, {
+        startY: 56,
+        head: [[
+          "No.",
+          "Student ID",
+          "Student",
+          "Required",
+          "Paid",
+          "Balance",
+        ]],
+        body: students.map((student, index) => {
+          const paid = studentPaid(student.id);
+          const requiredPaid =
+            studentRequiredPaid(student.id);
+
+          const balance = Math.max(
+            requiredFeeTotal - requiredPaid,
+            0,
+          );
+
+          return [
+            index + 1,
+            student.student_id,
+            `${student.first_name} ${student.last_name}`,
+            money(requiredFeeTotal),
+            money(paid),
+            money(balance),
+          ];
+        }),
+        theme: "grid",
+        styles: {
+          font: "helvetica",
+          fontSize: 8.5,
+          cellPadding: 3,
+          textColor: [51, 65, 85],
+          lineColor: [203, 213, 225],
+          lineWidth: 0.15,
+        },
+        headStyles: {
+          fillColor: [71, 85, 105],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+        },
+        alternateRowStyles: {
+          fillColor: [248, 250, 252],
+        },
+        columnStyles: {
+          0: {
+            cellWidth: 14,
+            halign: "center",
+          },
+          1: {
+            cellWidth: 38,
+          },
+          2: {
+            cellWidth: 70,
+          },
+          3: {
+            cellWidth: 45,
+            halign: "right",
+          },
+          4: {
+            cellWidth: 45,
+            halign: "right",
+          },
+          5: {
+            cellWidth: 45,
+            halign: "right",
+          },
+        },
+        didDrawPage: (data) => {
+          const pageNumber =
+            document.getNumberOfPages();
+
+          document.setFontSize(8);
+          document.setTextColor(100, 116, 139);
+
+          document.text(
+            `Page ${pageNumber}`,
+            276,
+            document.internal.pageSize.height - 7,
+            {
+              align: "right",
+            },
+          );
+
+          document.text(
+            "CGFK School Management System",
+            14,
+            document.internal.pageSize.height - 7,
+          );
+        },
+      });
+
+      const filename = `${schoolClass.code
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")}-fee-report.pdf`;
+
+      document.save(filename);
+    } catch (exception) {
+      setError(
+        exception instanceof Error
+          ? exception.message
+          : "The PDF report could not be generated.",
+      );
+    } finally {
+      setExportingPdf(false);
+    }
+  }
 
   function openPayment(student: PaymentStudent) {
     setSelectedStudent(student);
@@ -202,6 +657,7 @@ export default function ClassFeeManagement({
           body: JSON.stringify({
             student_id: selectedStudent.id,
             school_class_id: classId,
+            fee_item_id: Number(form.fee_item_id),
             amount: Number(form.amount),
             payment_date: form.payment_date,
             payment_method: form.payment_method,
@@ -259,18 +715,45 @@ export default function ClassFeeManagement({
           Back to Classes
         </Link>
 
-        <p className="mt-5 text-sm font-medium text-slate-500">
-          School Fees Management
-        </p>
+        <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500">
+              School Fees Management
+            </p>
 
-        <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
-          {schoolClass?.name ?? "Class Payments"}
-        </h1>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
+              {schoolClass?.name ?? "Class Payments"}
+            </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          {schoolClass?.code} · Manage payments for students
-          registered in this class.
-        </p>
+            <p className="mt-2 text-sm text-slate-500">
+              {schoolClass?.code} · Manage payments for
+              students registered in this class.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={exportPdf}
+            disabled={
+              exportingPdf ||
+              students.length === 0
+            }
+            className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {exportingPdf ? (
+              <LoaderCircle
+                size={17}
+                className="animate-spin"
+              />
+            ) : (
+              <Download size={17} />
+            )}
+
+            {exportingPdf
+              ? "Creating PDF..."
+              : "Export PDF"}
+          </button>
+        </div>
       </div>
 
       {success && (
@@ -343,8 +826,8 @@ export default function ClassFeeManagement({
             <table className="w-full min-w-[900px] text-left">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-5 py-3">Student</th>
                   <th className="px-5 py-3">Student ID</th>
+                  <th className="px-5 py-3">Student</th>
                   <th className="px-5 py-3">Required</th>
                   <th className="px-5 py-3">Paid</th>
                   <th className="px-5 py-3">Balance</th>
@@ -358,6 +841,12 @@ export default function ClassFeeManagement({
                 {filteredStudents.map((student) => (
                   <tr key={student.id} className="hover:bg-slate-50">
                     <td className="px-5 py-4">
+                      <span className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+                        {student.student_id}
+                      </span>
+                    </td>
+
+                    <td className="px-5 py-4">
                       <p className="font-semibold text-slate-900">
                         {student.first_name} {student.last_name}
                       </p>
@@ -368,21 +857,21 @@ export default function ClassFeeManagement({
                     </td>
 
                     <td className="px-5 py-4 text-sm text-slate-600">
-                      {student.student_id}
-                    </td>
-
-                    <td className="px-5 py-4 text-sm text-slate-600">
-                      {money(
-                        student.fee_summary?.total_required,
-                      )}
+                      {money(requiredFeeTotal)}
                     </td>
 
                     <td className="px-5 py-4 text-sm font-semibold text-emerald-700">
-                      {money(student.fee_summary?.total_paid)}
+                      {money(studentPaid(student.id))}
                     </td>
 
                     <td className="px-5 py-4 text-sm font-semibold text-red-600">
-                      {money(student.fee_summary?.balance)}
+                      {money(
+                        Math.max(
+                          requiredFeeTotal -
+                            studentRequiredPaid(student.id),
+                          0,
+                        ),
+                      )}
                     </td>
 
                     <td className="px-5 py-4 text-right">
@@ -443,6 +932,67 @@ export default function ClassFeeManagement({
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                  Payment item
+                </span>
+
+                <select
+                  required
+                  value={form.fee_item_id}
+                  onChange={(event) => {
+                    const item = feeItems.find(
+                      (feeItem) =>
+                        feeItem.id ===
+                        Number(event.target.value),
+                    );
+
+                    const alreadyPaid =
+                      item && selectedStudent
+                        ? studentItemPaid(
+                            selectedStudent.id,
+                            item.id,
+                          )
+                        : 0;
+
+                    const remaining = item
+                      ? Math.max(
+                          Number(item.amount) - alreadyPaid,
+                          0,
+                        )
+                      : 0;
+
+                    setForm((current) => ({
+                      ...current,
+                      fee_item_id: event.target.value,
+                      amount:
+                        remaining > 0
+                          ? String(remaining)
+                          : "",
+                    }));
+                  }}
+                  className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="">
+                    Select what the student is paying for
+                  </option>
+
+                  {feeItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} ({item.code}) —{" "}
+                      {money(Number(item.amount))}
+                    </option>
+                  ))}
+                </select>
+
+                {feeItems.length === 0 && (
+                  <p className="mt-1.5 text-xs text-red-600">
+                    No payment items are configured for this
+                    class. Create them from Finance Settings.
+                  </p>
+                )}
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-slate-700">
                   Amount paid
                 </span>
 
@@ -464,9 +1014,21 @@ export default function ClassFeeManagement({
                       }))
                     }
                     placeholder="Enter amount in RWF"
+                    max={
+                      selectedFeeItem
+                        ? selectedItemRemaining
+                        : undefined
+                    }
                     className="h-10 w-full rounded-lg border border-slate-300 pl-10 pr-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                   />
                 </div>
+
+                {selectedFeeItem && (
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Configured amount:{" "}
+                    {money(Number(selectedFeeItem.amount))}
+                  </p>
+                )}
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -562,7 +1124,9 @@ export default function ClassFeeManagement({
 
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={
+                    submitting || !form.fee_item_id
+                  }
                   className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
                 >
                   {submitting ? (
