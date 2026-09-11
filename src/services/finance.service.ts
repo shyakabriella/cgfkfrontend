@@ -3,6 +3,10 @@ import {
   SchoolClass,
 } from "@/services/student.service";
 
+export type FinanceClass = SchoolClass & {
+  students_count?: number;
+};
+
 const apiUrl =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8000/api";
@@ -16,7 +20,7 @@ function getToken() {
   );
 }
 
-function message(result: unknown, fallback: string) {
+function getMessage(result: unknown, fallback: string) {
   if (!result || typeof result !== "object") return fallback;
 
   const response = result as {
@@ -36,46 +40,35 @@ async function request(path: string) {
     throw new Error("Unauthenticated. Please log in again.");
   }
 
-  let response: Response;
-
-  try {
-    response = await fetch(`${apiUrl}${path}`, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
-  } catch {
-    throw new Error(
-      "Failed to connect to the backend server.",
-    );
-  }
+  const response = await fetch(`${apiUrl}${path}`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
 
   const result = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(
-      message(result, "Finance information could not be loaded."),
+      getMessage(
+        result,
+        "Finance information could not be loaded.",
+      ),
     );
   }
 
   return result;
 }
 
-export type FinanceClass = SchoolClass & {
-  students_count?: number;
-};
-
 export async function getFinanceClasses(): Promise<
   FinanceClass[]
 > {
   const result = await request("/finance/classes");
 
-  if (Array.isArray(result?.data)) {
-    return result.data;
-  }
-
-  return [];
+  return Array.isArray(result?.data)
+    ? result.data
+    : [];
 }
 
 export async function getFinanceClassStudents(

@@ -15,11 +15,12 @@ import {
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  getClasses,
-  getStudents,
   RegisteredStudent,
-  SchoolClass,
 } from "@/services/student.service";
+import {
+  FinanceClass,
+  getFinanceClassStudents,
+} from "@/services/finance.service";
 
 type PaymentStudent = RegisteredStudent & {
   fee_summary?: {
@@ -135,7 +136,7 @@ export default function ClassFeeManagement({
   classId: number;
 }) {
   const [schoolClass, setSchoolClass] =
-    useState<SchoolClass | null>(null);
+    useState<FinanceClass | null>(null);
   const [students, setStudents] = useState<PaymentStudent[]>([]);
   const [feeItems, setFeeItems] = useState<FeeItem[]>([]);
   const [payments, setPayments] = useState<FeePayment[]>([]);
@@ -162,13 +163,11 @@ export default function ClassFeeManagement({
       }
 
       const [
-        classList,
-        studentList,
+        classInformation,
         feeResponse,
         paymentResponse,
       ] = await Promise.all([
-        getClasses(),
-        getStudents({ schoolClassId: classId }),
+        getFinanceClassStudents(classId),
         fetch(`${apiUrl}/fee-items`, {
           headers: {
             Accept: "application/json",
@@ -221,10 +220,10 @@ export default function ClassFeeManagement({
           ),
       );
 
-      setSchoolClass(
-        classList.find((item) => item.id === classId) ?? null,
+      setSchoolClass(classInformation.schoolClass);
+      setStudents(
+        classInformation.students as PaymentStudent[],
       );
-      setStudents(studentList as PaymentStudent[]);
       setFeeItems(applicableItems);
       setPayments(
         extractList<FeePayment>(paymentResult).filter(
