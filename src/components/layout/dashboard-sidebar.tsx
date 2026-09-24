@@ -3,9 +3,11 @@
 import {
   BookOpenCheck,
   CalendarCheck,
+  FileQuestion,
   FileText,
   GraduationCap,
   LayoutDashboard,
+  NotebookText,
   School,
   Settings,
   UserRoundCheck,
@@ -29,6 +31,7 @@ type NavigationItem = {
   icon: typeof LayoutDashboard;
   hiddenFor?: string[];
   allowedFor?: string[];
+  comingSoon?: boolean;
 };
 
 const navigation: NavigationItem[] = [
@@ -43,6 +46,16 @@ const navigation: NavigationItem[] = [
     icon: School,
   },
   {
+    name: "Teaching Materials",
+    href: "/dashboard/teaching-materials",
+    icon: NotebookText,
+    allowedFor: [
+      "headmaster",
+      "director_of_studies",
+      "teacher",
+    ],
+  },
+  {
     name: "Teacher Assignments",
     href: "/dashboard/teacher-assignments",
     icon: UserRoundCheck,
@@ -51,6 +64,16 @@ const navigation: NavigationItem[] = [
     name: "Students",
     href: "/dashboard/students",
     icon: GraduationCap,
+  },
+  {
+    name: "Assessments",
+    href: "/dashboard/assessments",
+    icon: FileQuestion,
+    allowedFor: [
+      "headmaster",
+      "director_of_studies",
+      "teacher",
+    ],
   },
   {
     name: "Attendance",
@@ -63,6 +86,7 @@ const navigation: NavigationItem[] = [
     href: "/dashboard/marks",
     icon: BookOpenCheck,
     hiddenFor: ["director_of_studies"],
+    comingSoon: true,
   },
   {
     name: "Report Cards",
@@ -135,7 +159,10 @@ export default function DashboardSidebar({
       return navigation.filter((item) =>
         [
           "/dashboard",
+          "/dashboard/academic",
+          "/dashboard/teaching-materials",
           "/dashboard/attendance",
+          "/dashboard/assessments",
           "/dashboard/marks",
         ].includes(item.href),
       );
@@ -227,6 +254,29 @@ export default function DashboardSidebar({
                 item.href === "/dashboard"
                   ? pathname === dashboardHref
                   : pathname.startsWith(item.href);
+
+              if (item.comingSoon) {
+                return (
+                  <div
+                    key={item.href}
+                    title="This feature is coming soon"
+                    className="flex cursor-not-allowed items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-slate-400"
+                  >
+                    <Icon
+                      size={20}
+                      className="shrink-0 text-slate-500"
+                    />
+
+                    <span className="min-w-0 flex-1">
+                      {item.name}
+                    </span>
+
+                    <span className="shrink-0 rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-300">
+                      Coming soon
+                    </span>
+                  </div>
+                );
+              }
 
               return (
                 <Link

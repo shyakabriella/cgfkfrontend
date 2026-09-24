@@ -213,11 +213,43 @@ export default function AcademicPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
+  const [userRole, setUserRole] = useState("");
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   const apiUrl =
     process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
 
   useEffect(() => {
+    const storedUser =
+      localStorage.getItem("cgfk_user") ??
+      sessionStorage.getItem("cgfk_user");
+
+    if (!storedUser) {
+      setRoleLoaded(true);
+      return;
+    }
+
+    try {
+      const user = JSON.parse(storedUser) as {
+        role?: string;
+      };
+
+      setUserRole(user.role ?? "");
+    } catch {
+      setUserRole("");
+    } finally {
+      setRoleLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!roleLoaded) return;
+
+    if (userRole === "teacher") {
+      setLoading(false);
+      return;
+    }
+
     async function loadAcademicData() {
       const token = getToken();
 
@@ -283,10 +315,16 @@ export default function AcademicPage() {
     }
 
     loadAcademicData();
-  }, [apiUrl]);
-
+  }, [apiUrl, roleLoaded, userRole]);
 
   useEffect(() => {
+    if (!roleLoaded) return;
+
+    if (userRole === "teacher") {
+      setLoadingStudents(false);
+      return;
+    }
+
     async function loadStudents() {
       try {
         setStudents(await getStudents());
@@ -302,7 +340,7 @@ export default function AcademicPage() {
     }
 
     loadStudents();
-  }, []);
+  }, [roleLoaded, userRole]);
 
   function handleStudentSaved(student: RegisteredStudent) {
     setStudents((current) => [
@@ -567,6 +605,62 @@ export default function AcademicPage() {
   }[activeSection];
 
   const ActiveIcon = activeDetails.icon;
+
+  if (!roleLoaded) {
+    return (
+      <div className="flex min-h-64 items-center justify-center">
+        <LoaderCircle
+          size={24}
+          className="animate-spin text-slate-500"
+        />
+      </div>
+    );
+  }
+
+  if (userRole === "teacher") {
+    return (
+      <div className="space-y-6">
+        <div>
+          <p className="text-sm font-medium text-blue-600">
+            Academic Management
+          </p>
+
+          <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
+            Academic
+          </h1>
+
+          <p className="mt-2 text-sm text-slate-500">
+            View the courses taught at the school.
+          </p>
+        </div>
+
+        <section className="max-w-md">
+          <Link
+            href="/dashboard/courses"
+            className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-300 hover:shadow-md"
+          >
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition group-hover:bg-blue-600 group-hover:text-white">
+              <BookOpen size={23} />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <h2 className="font-bold text-slate-900">
+                Courses
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                View available courses, codes, hours and periods.
+              </p>
+            </div>
+
+            <span className="text-xl text-slate-400 transition group-hover:translate-x-1 group-hover:text-blue-600">
+              →
+            </span>
+          </Link>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
