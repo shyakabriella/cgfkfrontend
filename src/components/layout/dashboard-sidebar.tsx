@@ -131,6 +131,16 @@ export default function DashboardSidebar({
       );
     }
 
+    if (userRole === "teacher") {
+      return navigation.filter((item) =>
+        [
+          "/dashboard",
+          "/dashboard/attendance",
+          "/dashboard/marks",
+        ].includes(item.href),
+      );
+    }
+
     return navigation.filter((item) => {
       if (!userRole) return true;
 
@@ -245,7 +255,7 @@ export default function DashboardSidebar({
           </nav>
         </div>
 
-        {userRole !== "accountant" && (
+        {!["accountant", "teacher"].includes(userRole) && (
           <div className="border-t border-white/10 p-4">
             <Link
               href="/dashboard/settings"

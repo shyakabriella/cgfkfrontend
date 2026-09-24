@@ -162,7 +162,7 @@ export async function getMyTeachingAssignments() {
 
 export async function getClassStudents(schoolClassId: number) {
   const result = await apiRequest(
-    `/students?school_class_id=${schoolClassId}&per_page=200`,
+    `/attendance/classes/${schoolClassId}/students`,
   );
 
   return extractList<AttendanceStudent>(result);
