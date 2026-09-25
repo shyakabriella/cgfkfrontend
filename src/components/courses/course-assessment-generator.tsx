@@ -1,5 +1,7 @@
 "use client";
 
+import AssessmentAssignmentPanel from "@/components/assessments/assessment-assignment-panel";
+
 import {
   Check,
   CheckCircle2,
@@ -1115,6 +1117,10 @@ function AssessmentPreview({
           />
         </div>
       </div>
+
+      <AssessmentAssignmentPanel
+        assessmentId={assessment.id}
+      />
 
       <div className="mt-5 space-y-3">
         {assessment.questions.map(
