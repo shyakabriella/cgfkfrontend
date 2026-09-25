@@ -268,6 +268,19 @@ export default function LoginScreen() {
                   Forgot password?
                 </Link>
               </div>
+        <div className="text-center">
+          <p className="text-sm text-slate-500">
+            Are you a registered student?{" "}
+            <a
+              href="/student-account"
+              className="font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Create student account
+            </a>
+          </p>
+        </div>
+
+
 
               <button
                 type="submit"

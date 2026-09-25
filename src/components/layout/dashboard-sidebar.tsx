@@ -3,10 +3,12 @@
 import {
   BookOpenCheck,
   CalendarCheck,
+  ClipboardList,
   FileQuestion,
   FileText,
   GraduationCap,
   LayoutDashboard,
+  LibraryBig,
   NotebookText,
   School,
   Settings,
@@ -39,6 +41,18 @@ const navigation: NavigationItem[] = [
     name: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    name: "My Courses",
+    href: "/dashboard/my-courses",
+    icon: LibraryBig,
+    allowedFor: ["student"],
+  },
+  {
+    name: "My Work",
+    href: "/dashboard/my-work",
+    icon: ClipboardList,
+    allowedFor: ["student"],
   },
   {
     name: "Academic",
@@ -113,6 +127,7 @@ const roleDashboardPages: Record<string, string> = {
   discipline_master: "/dashboard/discipline_master",
   accountant: "/dashboard/accountant",
   teacher: "/dashboard/teacher",
+  student: "/dashboard",
   matron: "/dashboard/matron",
   patron: "/dashboard/patron",
 };
@@ -146,6 +161,16 @@ export default function DashboardSidebar({
     roleDashboardPages[userRole] ?? "/dashboard";
 
   const visibleNavigation = useMemo(() => {
+    if (userRole === "student") {
+      return navigation.filter((item) =>
+        [
+          "/dashboard",
+          "/dashboard/my-courses",
+          "/dashboard/my-work",
+        ].includes(item.href),
+      );
+    }
+
     if (userRole === "accountant") {
       return navigation.filter((item) =>
         [

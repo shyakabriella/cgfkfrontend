@@ -150,6 +150,12 @@ export default function CoursesPage() {
 
   const isTeacher = userRole === "teacher";
 
+  const canManageCourses = [
+    "admin",
+    "headmaster",
+    "director_of_studies",
+  ].includes(userRole);
+
   useEffect(() => {
     const storedUser =
       localStorage.getItem("cgfk_user") ??
@@ -878,13 +884,13 @@ export default function CoursesPage() {
                 </button>
               </div>
 
-              <div className="space-y-2 p-4">
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    openEditModal(selectedCourse)
-                  }
+              {canManageCourses && (
+                <div className="space-y-2 p-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openEditModal(selectedCourse)
+                    }
                   className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
                 >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
@@ -933,7 +939,8 @@ export default function CoursesPage() {
                     </p>
                   </div>
                 </button>
-              </div>
+                </div>
+              )}
 
               <div className="border-t border-slate-200 bg-slate-50 px-4 py-3">
                 <button

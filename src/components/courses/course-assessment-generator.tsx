@@ -286,9 +286,16 @@ export default function CourseAssessmentGenerator({
         );
       }
 
+      const learningUnitRecords =
+        result.data?.learning_units ??
+        result.learning_units ??
+        result.data?.data ??
+        result.data ??
+        [];
+
       setLearningUnits(
-        Array.isArray(result.data)
-          ? result.data
+        Array.isArray(learningUnitRecords)
+          ? learningUnitRecords
           : [],
       );
     } catch (requestError) {
@@ -302,8 +309,19 @@ export default function CourseAssessmentGenerator({
     }
   }
 
+  useEffect(() => {
+    if (standalone) {
+      void openGenerator();
+    }
+  }, [standalone, course.id]);
+
   function closeGenerator() {
     if (submitting) return;
+
+    if (standalone) {
+      router.push("/dashboard/assessments");
+      return;
+    }
 
     setOpen(false);
     setGenerated(null);
@@ -489,6 +507,7 @@ export default function CourseAssessmentGenerator({
         }
           onMouseDown={(event) => {
             if (
+              !standalone &&
               event.target ===
                 event.currentTarget &&
               !submitting
@@ -549,7 +568,7 @@ export default function CourseAssessmentGenerator({
                       </div>
                     )}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <label className="block">
                       <span className="mb-1.5 block text-sm font-medium text-slate-700">
                         Assigned class
@@ -629,7 +648,7 @@ export default function CourseAssessmentGenerator({
                       </select>
                     </label>
 
-                    <label className="block sm:col-span-2">
+                    <label className="block">
                       <span className="mb-1.5 block text-sm font-medium text-slate-700">
                         Indicative content
                       </span>
@@ -676,7 +695,7 @@ export default function CourseAssessmentGenerator({
                       </select>
                     </label>
 
-                    <label className="block sm:col-span-2">
+                    <label className="block">
                       <span className="mb-1.5 block text-sm font-medium text-slate-700">
                         Assessment title
                       </span>
