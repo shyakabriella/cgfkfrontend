@@ -12,6 +12,7 @@ import {
   NotebookText,
   School,
   Settings,
+  TableProperties,
   UserRoundCheck,
   Users,
   WalletCards,
@@ -108,6 +109,16 @@ const navigation: NavigationItem[] = [
     icon: FileText,
   },
   {
+    name: "Marksheet",
+    href: "/dashboard/marksheet",
+    icon: TableProperties,
+    allowedFor: [
+      "headmaster",
+      "director_of_studies",
+      "teacher",
+    ],
+  },
+  {
     name: "Finance",
     href: "/dashboard/finance",
     icon: WalletCards,
@@ -189,6 +200,7 @@ export default function DashboardSidebar({
           "/dashboard/attendance",
           "/dashboard/assessments",
           "/dashboard/marks",
+          "/dashboard/marksheet",
         ].includes(item.href),
       );
     }
